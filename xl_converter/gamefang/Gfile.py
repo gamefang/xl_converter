@@ -95,10 +95,14 @@ class gFile:
         :param auto_md: 是否自動創建相應路徑
         '''
         output_fullpath = __class__.get_abspath(output_fp)
+
+        dir_path = os.path.dirname(output_fullpath)
         if auto_md:
-            __class__.ensure_fp(output_fullpath)
-        else:
+            if dir_path:
+                os.makedirs(dir_path, exist_ok=True)
+        elif dir_path and not os.path.isdir(dir_path):
             raise Exception(f'{output_fp} not exist!')
+        
         with open(output_fullpath, 'w', encoding='utf-8') as file:
             file.write(content)
 

@@ -3,3 +3,4 @@ __*.*
 dist/
 build/
 *.spec
+.~*.*
