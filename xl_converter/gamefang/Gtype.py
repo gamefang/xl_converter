@@ -27,7 +27,7 @@ class gType:
     def to_str(raw) -> str:
         if raw is None:
             return ''
-        return str(raw)
+        return str(raw).replace('\\n','\n') # 換行符處理
     #endregion
 
     #region 列表
