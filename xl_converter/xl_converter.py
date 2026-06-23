@@ -2,6 +2,9 @@
 # 主要處理流程
 
 #region import
+# std
+import sys
+import subprocess
 # my
 from gamefang.Gconf import gConf
 from gamefang.Gfile import gFile
@@ -19,11 +22,19 @@ def _get_raw_xl_data(set_data: dict) -> dict:
     excel_files = __excel_file_list(target_folder, set_data.get('file_exts'), set_data.get('recursive_xl_files'))
     if not excel_files:
         print('no excel file found!')
-        return
+        return {}
     # 獲取excel內容字典
     result = {}
     for fn in excel_files:
-        result.update(__workbook_data_load(fn, set_data))
+        try:
+            this_data = __workbook_data_load(fn, set_data)
+        except Exception as e:  # 單一文檔讀取失敗
+            print(f'warning: failed to load <{fn}>, skipped! ({e})')
+            continue
+        for conf_name in this_data:	# 兩個配置名稱重複
+            if conf_name in result:
+                print(f'warning: sheet name [{conf_name}] in <{fn}> duplicates the one from <{result[conf_name]["file_path"]}>, the latter will be overwritten!')
+        result.update(this_data)
     return result
 
 def __workbook_data_load(fn: str, set_data: dict) -> dict:
@@ -103,8 +114,8 @@ def _data_clean(raw_data: dict, set_data: dict) -> dict:
         all_list_type = [__confirm_type(item, set_data) for item in row]    # 類型列表（含註釋列）
         list_type = [item for num,item in enumerate(all_list_type) if is_using[num]]    # 實際類型（不含註釋列）
         # 確定默認值
-        row = raw_value_list[2] # 第三行可以是默認值
-        if str(row[0]) == '0':
+        row = raw_value_list[2] if len(raw_value_list) > 2 else None # 第三行可以是默認值
+        if row is not None and str(row[0]) == '0':
             default_values = [__parse_type(item, all_list_type[num]) for num,item in enumerate(row)]    # 默認值（含註釋列）
         else:
             default_values = []
@@ -113,7 +124,7 @@ def _data_clean(raw_data: dict, set_data: dict) -> dict:
         this_conf_dic['content'].append(list_type)  # 添加類型
         this_conf_dic['content'].append(list_param_name)    # 添加表頭
         start_row = (2,3)[len(default_values) != 0]
-        for row_num, row in enumerate(datadic['raw_value_list'][start_row:]):
+        for row in datadic['raw_value_list'][start_row:]:
             if str(row[0]).startswith(note_signs): continue  # 行註釋
             row_content = []
             for col_num,item in enumerate(row):
@@ -157,6 +168,9 @@ def _data_convert(origin_data, base_data_style: int):
             return __to_row_dict_list(origin_data)
         case 2: # key嵌套字典 {1:{'hp':30...},2:{'hp':50...}...}
             return __to_key_nested_dict(origin_data)
+        case _: # 未知情況
+            print(f'warning: unrecognized base_data_style [{base_data_style}], data kept as raw 2D list!')
+            return origin_data
     return origin_data
 
 def __to_row_dict_list(origin_data: list) -> list:
@@ -183,6 +197,8 @@ def __to_key_nested_dict(origin_data: list) -> dict:
     list_param_name = origin_data[0]
     for row_list in origin_data[1:]:
         key = row_list[0]
+        if key in result:	# key字段重複
+            print(f'warning: duplicate key [{key}] found, the latter row will overwrite the former!')
         subdic = {}
         for i in range(1, len(row_list)):
             param_name = list_param_name[i]
@@ -237,12 +253,14 @@ def _data_output(all_xl_data, set_data: dict) -> None:
                         file.write(jsonstr)
                     print(f'<{output_fp}> Done!')
         case 'unity':
-            pass
+            print('warning: [unity] output template not yet implemented!')
         case 'godot':   # 支持嵌套字典、單文件
             output_fp = gFile.path_join(set_data.get('folder'), set_data.get('output_dir'), set_data.get('output_in_one_fn'))
             import output_template.godot as godot
             godot.output_in_one(dic_converted_data, output_fp,
                 header=set_data.get('output_file_header') or '', tail=set_data.get('output_file_tail') or '')
+        case _:
+            print(f'warning: unrecognized output_template [{output_template}], nothing was output!')
 # endregion
 
 def main(set_fp: str) -> None:
@@ -270,16 +288,15 @@ def main(set_fp: str) -> None:
     # 執行後續任務
     done_scripts = set_data.get('done_scripts')
     if (done_scripts):
-        import os
-        import sys
         for script in done_scripts:
             fp = gFile.path_join(set_data.get('folder'), script)
             sys.stdout.flush()  # 確保按順序執行
-            os.system(f'python {fp}')
+            result = subprocess.run([sys.executable, fp])
+            if result.returncode != 0:
+                print(f'warning: <{fp}> exited with code {result.returncode}')
     print('----------[xl_converter]----------')
 
 if __name__ == '__main__':
-    import sys
     if len(sys.argv) == 1 and sys.argv[0]:  # 直接運行腳本（測試）
         main(r'../sample/xl_converter.toml')    # 視配置文件位置手動調整
     else:   # 外部帶參數調用
