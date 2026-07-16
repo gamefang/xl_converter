@@ -198,7 +198,7 @@ def __to_key_nested_dict(origin_data: list) -> dict:
     for row_list in origin_data[1:]:
         key = row_list[0]
         if key in result:	# key字段重複
-            print(f'warning: duplicate key [{key}] found, the latter row will overwrite the former!')
+            print(f'warning: duplicate key [{key}] found, the latter row will overwrite the former!\n    entire row: {row_list}')
         subdic = {}
         for i in range(1, len(row_list)):
             param_name = list_param_name[i]
